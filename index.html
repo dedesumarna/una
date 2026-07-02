@@ -186,10 +186,60 @@
 </div>
 
 <script>
-    // ======================= INVOICE NUMBER =======================
-    function getTodayKey() { const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
-    function getNextInvoiceNumber() { const key=getTodayKey(); let c=localStorage.getItem(`invCounter_${key}`); c=c?parseInt(c)+1:1; localStorage.setItem(`invCounter_${key}`,c); return `INV-${key}-${String(c).padStart(3,'0')}`; }
-    function updateInvoiceNumberField() { const saved=localStorage.getItem('savedInvoiceForm'); let existing=null; if(saved){try{const d=JSON.parse(saved); if(d.invNumber && d.invNumber.includes(getTodayKey())) existing=d.invNumber;}catch(e){}} document.getElementById('invNumber').value=existing||getNextInvoiceNumber(); }
+    // ======================= INVOICE NUMBER - IMPROVED VERSION =======================
+    function getTodayKey() { 
+        const d = new Date(); 
+        return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; 
+    }
+    
+    function getNextInvoiceNumber() { 
+        const key = getTodayKey(); 
+        // Ambil counter terakhir dari localStorage
+        let counterData = localStorage.getItem('invCounterData');
+        let counters = counterData ? JSON.parse(counterData) : {};
+        
+        // Jika belum ada counter untuk hari ini, mulai dari 1
+        if (!counters[key]) {
+            counters[key] = 1;
+        } else {
+            counters[key] = counters[key] + 1;
+        }
+        
+        // Simpan kembali
+        localStorage.setItem('invCounterData', JSON.stringify(counters));
+        
+        // Generate nomor invoice
+        return `INV-${key}-${String(counters[key]).padStart(3,'0')}`;
+    }
+    
+    // Fungsi untuk mendapatkan nomor invoice yang sudah ada (tanpa increment)
+    function getCurrentInvoiceNumber() {
+        const key = getTodayKey();
+        const counterData = localStorage.getItem('invCounterData');
+        const counters = counterData ? JSON.parse(counterData) : {};
+        const currentCount = counters[key] || 0;
+        if (currentCount === 0) {
+            // Belum ada invoice hari ini, buat baru
+            return getNextInvoiceNumber();
+        }
+        return `INV-${key}-${String(currentCount).padStart(3,'0')}`;
+    }
+    
+    function updateInvoiceNumberField() { 
+        const saved = localStorage.getItem('savedInvoiceForm');
+        let existing = null;
+        if (saved) {
+            try {
+                const d = JSON.parse(saved);
+                // Cek apakah nomor invoice masih valid untuk hari ini
+                if (d.invNumber && d.invNumber.includes(getTodayKey())) {
+                    existing = d.invNumber;
+                }
+            } catch(e) {}
+        }
+        // Jika ada existing invoice hari ini, pakai itu. Jika tidak, buat baru.
+        document.getElementById('invNumber').value = existing || getNextInvoiceNumber(); 
+    }
 
     // ======================= REFUND HANDLERS =======================
     document.getElementById('enableRefundPolicy').addEventListener('change', function(e){
@@ -197,21 +247,27 @@
     });
     
     // ======================= TAX HANDLERS =======================
-    document.getElementById('enableTaxInvoice').addEventListener('change', function(e){ document.getElementById('taxSettings').style.display=e.target.checked?'block':'none'; checkTaxConsistency(); });
-    const autoRadio=document.querySelector('input[value="auto"]'), manualRadio=document.querySelector('input[value="manual"]'), manualPpnGroup=document.getElementById('manualPpnGroup');
-    function togglePpnMode(){ manualPpnGroup.style.display=(manualRadio&&manualRadio.checked)?'block':'none'; }
-    if(autoRadio) autoRadio.addEventListener('change',togglePpnMode);
-    if(manualRadio) manualRadio.addEventListener('change',togglePpnMode);
+    document.getElementById('enableTaxInvoice').addEventListener('change', function(e){ 
+        document.getElementById('taxSettings').style.display = e.target.checked ? 'block' : 'none'; 
+        checkTaxConsistency(); 
+    });
+    const autoRadio = document.querySelector('input[value="auto"]'), 
+          manualRadio = document.querySelector('input[value="manual"]'), 
+          manualPpnGroup = document.getElementById('manualPpnGroup');
+    function togglePpnMode(){ 
+        manualPpnGroup.style.display = (manualRadio && manualRadio.checked) ? 'block' : 'none'; 
+    }
+    if(autoRadio) autoRadio.addEventListener('change', togglePpnMode);
+    if(manualRadio) manualRadio.addEventListener('change', togglePpnMode);
 
     // ======================= ITEMS MANAGEMENT =======================
-    let itemRows=[];
+    let itemRows = [];
     function calculateTaxableDPP(){ let t=0; for(let i of itemRows) if(i.includeInTax){ let q=i.qty||0, p=i.price||0, d=i.discount||0, sub=q*p, after=sub-(sub*d/100); t+=after; } return t; }
     function calculateTotalPPNFromItems(){ let t=0; for(let i of itemRows){ let q=i.qty||0, p=i.price||0, d=i.discount||0, r=i.taxRate||0, sub=q*p, after=sub-(sub*d/100); t+=after*(r/100); } return t; }
     function calculateSubtotal(){ let t=0; for(let i of itemRows){ let q=i.qty||0, p=i.price||0, d=i.discount||0, sub=q*p, after=sub-(sub*d/100); t+=after; } return t; }
     function calculateTotalWithTax(){ let t=0; for(let i of itemRows){ let q=i.qty||0, p=i.price||0, d=i.discount||0, r=i.taxRate||0, sub=q*p, after=sub-(sub*d/100); t+=after+(after*r/100); } return t; }
     function getTotalPayments(){ return (parseFloat(document.getElementById('payAmount1').value)||0)+(parseFloat(document.getElementById('payAmount2').value)||0); }
 
-    // Fungsi untuk generate HTML kebijakan refund
     function generateRefundPolicyHTML() {
         const isEnabled = document.getElementById('enableRefundPolicy').checked;
         if(!isEnabled) return '';
@@ -252,12 +308,20 @@
     }
 
     function checkTaxConsistency(){
-        const enable=document.getElementById('enableTaxInvoice').checked;
-        const warn=document.getElementById('taxWarning');
+        const enable = document.getElementById('enableTaxInvoice').checked;
+        const warn = document.getElementById('taxWarning');
         if(!enable){ warn.innerHTML=''; warn.classList.remove('show','error','success'); return; }
-        const taxable=itemRows.filter(i=>i.includeInTax);
-        if(taxable.length===0){ warn.innerHTML='⚠️ <strong>Tidak ada item yang dicentang "Masuk Faktur"</strong><br>Centang kolom "Masuk Faktur?" pada item yang ingin dimasukkan ke Faktur Pajak.'; warn.classList.add('show','error'); warn.classList.remove('success'); }
-        else{ warn.innerHTML=`✅ <strong>${taxable.length} item masuk Faktur Pajak</strong> (akan dihitung PPN-nya).`; warn.classList.add('show','success'); warn.classList.remove('error'); }
+        const taxable = itemRows.filter(i=>i.includeInTax);
+        if(taxable.length===0){ 
+            warn.innerHTML='⚠️ <strong>Tidak ada item yang dicentang "Masuk Faktur"</strong><br>Centang kolom "Masuk Faktur?" pada item yang ingin dimasukkan ke Faktur Pajak.'; 
+            warn.classList.add('show','error'); 
+            warn.classList.remove('success'); 
+        }
+        else{ 
+            warn.innerHTML=`✅ <strong>${taxable.length} item masuk Faktur Pajak</strong> (akan dihitung PPN-nya).`; 
+            warn.classList.add('show','success'); 
+            warn.classList.remove('error'); 
+        }
     }
 
     function renderItemsTable(){
@@ -265,11 +329,18 @@
         if(itemRows.length===0) itemRows.push({name:'',qty:1,price:0,discount:0,taxRate:0,includeInTax:false});
         itemRows.forEach((item,idx)=>{
             const tr=document.createElement('tr');
-            tr.innerHTML=`<td><input type="text" class="item-name" value="${escapeHtml(item.name)}" data-idx="${idx}"></td><td><input type="number" class="item-qty" value="${item.qty}" data-idx="${idx}"></td><td><input type="number" class="item-price" value="${item.price}" data-idx="${idx}"></td><td><input type="number" class="item-discount" value="${item.discount}" data-idx="${idx}" step="0.5"></td><td><input type="number" class="item-taxRate" value="${item.taxRate}" data-idx="${idx}" step="0.5"></td><td><input type="checkbox" class="item-includeTax" ${item.includeInTax?'checked':''} data-idx="${idx}" style="width:20px;height:20px;margin:0 auto;display:block"></td><td><button class="btn-remove" data-idx="${idx}">Hapus</button></td>`;
+            tr.innerHTML=`<td><input type="text" class="item-name" value="${escapeHtml(item.name)}" data-idx="${idx}"></td>
+                         <td><input type="number" class="item-qty" value="${item.qty}" data-idx="${idx}"></td>
+                         <td><input type="number" class="item-price" value="${item.price}" data-idx="${idx}"></td>
+                         <td><input type="number" class="item-discount" value="${item.discount}" data-idx="${idx}" step="0.5"></td>
+                         <td><input type="number" class="item-taxRate" value="${item.taxRate}" data-idx="${idx}" step="0.5"></td>
+                         <td><input type="checkbox" class="item-includeTax" ${item.includeInTax?'checked':''} data-idx="${idx}" style="width:20px;height:20px;margin:0 auto;display:block"></td>
+                         <td><button class="btn-remove" data-idx="${idx}">Hapus</button></td>`;
             tbody.appendChild(tr);
         });
         attachItemEvents();
     }
+    
     function attachItemEvents(){
         document.querySelectorAll('.item-name').forEach(i=>i.addEventListener('change',e=>{itemRows[e.target.dataset.idx].name=e.target.value; checkTaxConsistency();}));
         document.querySelectorAll('.item-qty').forEach(i=>i.addEventListener('change',e=>{itemRows[e.target.dataset.idx].qty=parseFloat(e.target.value)||0; checkTaxConsistency();}));
@@ -279,12 +350,49 @@
         document.querySelectorAll('.item-includeTax').forEach(i=>i.addEventListener('change',e=>{itemRows[e.target.dataset.idx].includeInTax=e.target.checked; checkTaxConsistency();}));
         document.querySelectorAll('.btn-remove').forEach(b=>b.addEventListener('click',e=>{itemRows.splice(e.target.dataset.idx,1); renderItemsTable(); checkTaxConsistency();}));
     }
+    
     function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>]/g,function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
     function saveAllInputData(){
-        const data={ sellerName:document.getElementById('sellerName').value, sellerAddress:document.getElementById('sellerAddress').value, sellerNPWP:document.getElementById('sellerNPWP').value, sellerWA:document.getElementById('sellerWA').value, sellerWeb:document.getElementById('sellerWeb').value, sellerBank:document.getElementById('sellerBank').value, sellerAccount:document.getElementById('sellerAccount').value, sellerAccountName:document.getElementById('sellerAccountName').value, customerName:document.getElementById('customerName').value, customerAddress:document.getElementById('customerAddress').value, customerNPWP:document.getElementById('customerNPWP').value, domain:document.getElementById('domain').value, waNumber:document.getElementById('waNumber').value, invNumber:document.getElementById('invNumber').value, taxSerialNumber:document.getElementById('taxSerialNumber').value, invDate:document.getElementById('invDate').value, dueDate:document.getElementById('dueDate').value, items:itemRows, payDate1:document.getElementById('payDate1').value, payMethod1:document.getElementById('payMethod1').value, payAmount1:document.getElementById('payAmount1').value, payDate2:document.getElementById('payDate2').value, payMethod2:document.getElementById('payMethod2').value, payAmount2:document.getElementById('payAmount2').value, enableTaxInvoice:document.getElementById('enableTaxInvoice').checked, enableRefundPolicy:document.getElementById('enableRefundPolicy').checked, refundPolicyType:document.getElementById('refundPolicyType').value, operationalFee:document.getElementById('operationalFee').value, hourlyRate:document.getElementById('hourlyRate').value, hoursUsed:document.getElementById('hoursUsed').value, pphRate:document.getElementById('pphRate').value, pphNominal:document.getElementById('pphNominal').value, ppnMode:document.querySelector('input[name="ppnMode"]:checked')?.value||'auto', manualPpnValue:document.getElementById('manualPpnValue').value };
+        const data={ 
+            sellerName:document.getElementById('sellerName').value, 
+            sellerAddress:document.getElementById('sellerAddress').value, 
+            sellerNPWP:document.getElementById('sellerNPWP').value, 
+            sellerWA:document.getElementById('sellerWA').value, 
+            sellerWeb:document.getElementById('sellerWeb').value, 
+            sellerBank:document.getElementById('sellerBank').value, 
+            sellerAccount:document.getElementById('sellerAccount').value, 
+            sellerAccountName:document.getElementById('sellerAccountName').value, 
+            customerName:document.getElementById('customerName').value, 
+            customerAddress:document.getElementById('customerAddress').value, 
+            customerNPWP:document.getElementById('customerNPWP').value, 
+            domain:document.getElementById('domain').value, 
+            waNumber:document.getElementById('waNumber').value, 
+            invNumber:document.getElementById('invNumber').value, 
+            taxSerialNumber:document.getElementById('taxSerialNumber').value, 
+            invDate:document.getElementById('invDate').value, 
+            dueDate:document.getElementById('dueDate').value, 
+            items:itemRows, 
+            payDate1:document.getElementById('payDate1').value, 
+            payMethod1:document.getElementById('payMethod1').value, 
+            payAmount1:document.getElementById('payAmount1').value, 
+            payDate2:document.getElementById('payDate2').value, 
+            payMethod2:document.getElementById('payMethod2').value, 
+            payAmount2:document.getElementById('payAmount2').value, 
+            enableTaxInvoice:document.getElementById('enableTaxInvoice').checked, 
+            enableRefundPolicy:document.getElementById('enableRefundPolicy').checked, 
+            refundPolicyType:document.getElementById('refundPolicyType').value, 
+            operationalFee:document.getElementById('operationalFee').value, 
+            hourlyRate:document.getElementById('hourlyRate').value, 
+            hoursUsed:document.getElementById('hoursUsed').value, 
+            pphRate:document.getElementById('pphRate').value, 
+            pphNominal:document.getElementById('pphNominal').value, 
+            ppnMode:document.querySelector('input[name="ppnMode"]:checked')?.value||'auto', 
+            manualPpnValue:document.getElementById('manualPpnValue').value 
+        };
         localStorage.setItem('savedInvoiceForm',JSON.stringify(data));
     }
+    
     function loadAllInputData(){
         const saved=localStorage.getItem('savedInvoiceForm');
         if(saved){
@@ -360,7 +468,6 @@
         if(p1===0 && p2===0) paymentHtml+=`<p>💔 Belum ada pembayaran</p>`;
         paymentHtml+=`</div>`;
         
-        // Generate refund policy HTML
         const refundHTML = generateRefundPolicyHTML();
         
         return `<div class="invoice-output" id="printThisInvoice"><div class="invoice-header"><div class="logo-area"><img src="LogoNew.png" alt="Logo" onerror="this.src='https://img.freepik.com/free-vector/bird-colorful-logo-gradient-vector_343694-1365.jpg?w=200'"></div><div class="invoice-title"><h1>INVOICE</h1><p>${invNumber}</p></div></div><div class="details-grid"><div class="detail-card"><h4>✨ Dari Kami (Penjual)</h4><p>${escapeHtml(seller.name)}</p><p>${escapeHtml(seller.address)}</p><p>NPWP: ${escapeHtml(document.getElementById('sellerNPWP').value)}</p><p>📞 ${escapeHtml(seller.wa)}</p><p>🌐 ${escapeHtml(seller.web)}</p></div><div class="detail-card"><h4>📅 Info Tagihan</h4><p>📆 Terbit: ${invDate}</p><p>⏰ Jatuh tempo: ${dueDate}</p><p>🔖 Status: <span class="status-badge ${statusClass}">${statusText}</span></p></div></div><div class="detail-card customer-card"><h4>💌 Kepada (Pembeli)</h4><p><strong>${escapeHtml(customer.name)}</strong></p><p>${escapeHtml(customer.address)}</p>${customer.npwp!=='-'?`<p>NPWP: ${escapeHtml(customer.npwp)}</p>`:''}${customer.domain?`<p>🌍 ${escapeHtml(customer.domain)}</p>`:''}<p>📱 ${escapeHtml(customer.wa)}</p></div>${itemsHtml}<div class="total-box"><p><strong>🧾 Subtotal:</strong> Rp ${subtotal.toLocaleString()}</p><p><strong>📊 Total PPN:</strong> Rp ${totalPPN.toLocaleString()}</p><p><strong>💰 Total Tagihan:</strong> Rp ${totalAll.toLocaleString()}</p><p><strong>💵 Total Dibayar:</strong> Rp ${totalPaid.toLocaleString()}</p><p><strong>💸 Sisa Tagihan:</strong> Rp ${sisa.toLocaleString()}</p></div>${paymentHtml}<div class="bank-info"><strong>💳 Transfer ke rekening berikut:</strong><br>${escapeHtml(seller.bank)} • ${escapeHtml(seller.account)} • a.n ${escapeHtml(seller.an)}<br><span style="font-size:12px;">📱 QRIS juga tersedia</span></div>${refundHTML}<div style="margin-top:24px;font-size:11px;text-align:center;color:#9ca3af;border-top:1px solid #f3f4f6;padding-top:16px;">Terima kasih! 😊 • Invoice ini dibuat otomatis</div></div>`;
@@ -396,51 +503,92 @@
         return `<div class="tax-invoice-output" id="printTaxInvoice" style="page-break-before: always;"><div class="tax-header"><h1>FAKTUR PAJAK</h1><p>No. Seri Faktur: ${escapeHtml(taxSerial)}</p></div><div class="tax-details"><div class="detail-card"><h4>🏢 PENJUAL</h4><p><strong>${escapeHtml(seller.name)}</strong></p><p>${escapeHtml(seller.address)}</p><p>NPWP: ${escapeHtml(seller.npwp)}</p><p>Bank: ${escapeHtml(seller.bank)} - ${escapeHtml(seller.account)} a.n ${escapeHtml(seller.an)}</p></div><div class="detail-card"><h4>🏛️ PEMBELI</h4><p><strong>${escapeHtml(customer.name)}</strong></p><p>${escapeHtml(customer.address)}</p><p>NPWP: ${escapeHtml(customer.npwp)}</p><p>📞 WA: ${escapeHtml(customer.wa)}</p></div></div>${itemsHtml}<div class="tax-calculation"><div class="tax-row"><span>💰 Dasar Pengenaan Pajak (DPP)</span><span><strong>Rp ${dpp.toLocaleString()}</strong></span></div><div class="tax-row"><span>📊 PPN (${isManual?'Manual':'dari item'})</span><span>Rp ${ppn.toLocaleString()}</span></div><div class="tax-row"><span>📉 PPh Pasal 23 (Pemotongan)</span><span>Rp ${pph.toLocaleString()}</span></div><div class="tax-row total"><span>💵 TOTAL YANG HARUS DIBAYAR</span><span>Rp ${totalAfterTax.toLocaleString()}</span></div></div><div style="margin:15px 0;padding:12px;background:#f1f5f9;border-radius:12px;font-size:13px;"><strong>📌 Keterangan:</strong><br>• Faktur ini diterbitkan untuk keperluan administrasi perpajakan.<br>• PPN dipungut sesuai UU HPP No. 7 Tahun 2021.<br>• PPh Pasal 23 dipotong oleh bendahara (jika ada).<br>• Invoice No: ${invNumber} | Tanggal: ${invDate}</div><div style="margin-top:20px;font-size:11px;text-align:center;color:#6b7280;border-top:1px solid #e2e8f0;padding-top:12px;">Dokumen ini dicetak secara elektronik • Valid tanpa tanda tangan</div></div>`;
     }
 
-    function showOutput(){ saveAllInputData(); let html=generateInvoice(); if(document.getElementById('enableTaxInvoice').checked) html+=generateTaxInvoice(); document.getElementById('invoicePreviewArea').innerHTML=html; document.getElementById('inputSection').style.display='none'; document.getElementById('outputSection').style.display='block'; window.scrollTo({top:0}); }
-    function backToEdit(){ document.getElementById('inputSection').style.display='block'; document.getElementById('outputSection').style.display='none'; loadAllInputData(); }
+    function showOutput(){ 
+        saveAllInputData(); 
+        let html = generateInvoice(); 
+        if(document.getElementById('enableTaxInvoice').checked) html += generateTaxInvoice(); 
+        document.getElementById('invoicePreviewArea').innerHTML = html; 
+        document.getElementById('inputSection').style.display = 'none'; 
+        document.getElementById('outputSection').style.display = 'block'; 
+        window.scrollTo({top:0}); 
+    }
+    
+    function backToEdit(){ 
+        document.getElementById('inputSection').style.display = 'block'; 
+        document.getElementById('outputSection').style.display = 'none'; 
+        loadAllInputData(); 
+    }
 
     async function downloadInvoicePDF(){
-        const element=document.getElementById('printThisInvoice');
+        const element = document.getElementById('printThisInvoice');
         if(!element){ alert('Invoice tidak ditemukan. Preview terlebih dahulu.'); return; }
-        const canvas=await html2canvas(element,{scale:2,backgroundColor:'#ffffff'});
-        const imgData=canvas.toDataURL('image/png');
-        const {jsPDF}=window.jspdf;
-        const pdf=new jsPDF('p','mm','a4');
-        const imgWidth=190, imgHeight=(canvas.height*imgWidth)/canvas.width;
-        pdf.addImage(imgData,'PNG',10,10,imgWidth,imgHeight);
+        const canvas = await html2canvas(element, {scale:2, backgroundColor:'#ffffff'});
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p','mm','a4');
+        const imgWidth = 190, imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
         pdf.save(`Invoice_${document.getElementById('invNumber').value||'output'}.pdf`);
     }
 
     async function downloadTaxPDF(){
-        const element=document.getElementById('printTaxInvoice');
+        const element = document.getElementById('printTaxInvoice');
         if(!element){ alert('Faktur Pajak tidak ditemukan. Centang "Buat Faktur Pajak Terpisah" dan preview terlebih dahulu.'); return; }
-        const canvas=await html2canvas(element,{scale:2,backgroundColor:'#ffffff'});
-        const imgData=canvas.toDataURL('image/png');
-        const {jsPDF}=window.jspdf;
-        const pdf=new jsPDF('p','mm','a4');
-        const imgWidth=190, imgHeight=(canvas.height*imgWidth)/canvas.width;
-        pdf.addImage(imgData,'PNG',10,10,imgWidth,imgHeight);
+        const canvas = await html2canvas(element, {scale:2, backgroundColor:'#ffffff'});
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p','mm','a4');
+        const imgWidth = 190, imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
         pdf.save(`FakturPajak_${document.getElementById('invNumber').value||'output'}.pdf`);
     }
 
     async function saveAsImage(){
-        const element=document.getElementById('printThisInvoice');
+        const element = document.getElementById('printThisInvoice');
         if(!element){ alert('Invoice tidak ditemukan.'); return; }
-        const canvas=await html2canvas(element,{scale:2});
-        const link=document.createElement('a');
-        link.download=`Invoice_${document.getElementById('invNumber').value||'output'}.png`;
-        link.href=canvas.toDataURL();
+        const canvas = await html2canvas(element, {scale:2});
+        const link = document.createElement('a');
+        link.download = `Invoice_${document.getElementById('invNumber').value||'output'}.png`;
+        link.href = canvas.toDataURL();
         link.click();
     }
 
-    document.getElementById('addItemBtn').addEventListener('click',()=>{ itemRows.push({name:'',qty:1,price:0,discount:0,taxRate:0,includeInTax:false}); renderItemsTable(); checkTaxConsistency(); });
-    document.getElementById('previewBtn').addEventListener('click',showOutput);
-    document.getElementById('backEditBtn').addEventListener('click',backToEdit);
-    document.getElementById('downloadInvoicePdfBtn').addEventListener('click',downloadInvoicePDF);
-    document.getElementById('downloadTaxPdfBtn').addEventListener('click',downloadTaxPDF);
-    document.getElementById('saveImageBtn').addEventListener('click',saveAsImage);
-    document.getElementById('pphRate').addEventListener('change',checkTaxConsistency);
+    document.getElementById('addItemBtn').addEventListener('click', ()=>{ 
+        itemRows.push({name:'',qty:1,price:0,discount:0,taxRate:0,includeInTax:false}); 
+        renderItemsTable(); 
+        checkTaxConsistency(); 
+    });
+    document.getElementById('previewBtn').addEventListener('click', showOutput);
+    document.getElementById('backEditBtn').addEventListener('click', backToEdit);
+    document.getElementById('downloadInvoicePdfBtn').addEventListener('click', downloadInvoicePDF);
+    document.getElementById('downloadTaxPdfBtn').addEventListener('click', downloadTaxPDF);
+    document.getElementById('saveImageBtn').addEventListener('click', saveAsImage);
+    document.getElementById('pphRate').addEventListener('change', checkTaxConsistency);
 
+    // ======================= RESET COUNTER PADA MIDNIGHT =======================
+    // Fungsi untuk reset counter otomatis saat hari berganti
+    function checkDateChange() {
+        const today = getTodayKey();
+        const lastDate = localStorage.getItem('lastDate');
+        if (lastDate && lastDate !== today) {
+            // Hari berganti, reset counter dengan membuat entri baru
+            const counterData = localStorage.getItem('invCounterData');
+            const counters = counterData ? JSON.parse(counterData) : {};
+            if (!counters[today]) {
+                counters[today] = 0; // Reset ke 0, nanti akan increment ke 1
+                localStorage.setItem('invCounterData', JSON.stringify(counters));
+            }
+            localStorage.setItem('lastDate', today);
+        } else if (!lastDate) {
+            localStorage.setItem('lastDate', today);
+        }
+    }
+
+    // Jalankan pengecekan setiap 10 detik
+    setInterval(checkDateChange, 10000);
+
+    // Inisialisasi
+    checkDateChange();
     updateInvoiceNumberField();
     loadAllInputData();
 </script>
