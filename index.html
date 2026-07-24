@@ -186,61 +186,87 @@
 </div>
 
 <script>
-    // ======================= INVOICE NUMBER - IMPROVED VERSION =======================
-    function getTodayKey() { 
-        const d = new Date(); 
-        return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; 
+    // ======================= INVOICE NUMBER - AUTO UPDATE =======================
+function getTodayKey() { 
+    const d = new Date(); 
+    return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; 
+}
+
+function getNextInvoiceNumber() { 
+    const key = getTodayKey(); 
+    let counterData = localStorage.getItem('invCounterData');
+    let counters = counterData ? JSON.parse(counterData) : {};
+    
+    if (!counters[key]) {
+        counters[key] = 1;
+    } else {
+        counters[key] = counters[key] + 1;
     }
     
-    function getNextInvoiceNumber() { 
-        const key = getTodayKey(); 
-        // Ambil counter terakhir dari localStorage
-        let counterData = localStorage.getItem('invCounterData');
-        let counters = counterData ? JSON.parse(counterData) : {};
-        
-        // Jika belum ada counter untuk hari ini, mulai dari 1
-        if (!counters[key]) {
-            counters[key] = 1;
-        } else {
-            counters[key] = counters[key] + 1;
+    localStorage.setItem('invCounterData', JSON.stringify(counters));
+    return `INV-${key}-${String(counters[key]).padStart(3,'0')}`;
+}
+
+function updateInvoiceNumberField() { 
+    const today = getTodayKey();
+    const saved = localStorage.getItem('savedInvoiceForm');
+    let existing = null;
+    
+    if (saved) {
+        try {
+            const d = JSON.parse(saved);
+            // Cek apakah nomor invoice masih valid untuk hari ini
+            if (d.invNumber && d.invNumber.includes(today)) {
+                existing = d.invNumber;
+            }
+        } catch(e) {}
+    }
+    
+    // Jika tidak ada existing untuk hari ini, buat baru (auto-increment)
+    const invNumber = existing || getNextInvoiceNumber();
+    document.getElementById('invNumber').value = invNumber;
+    
+    // Update localStorage dengan nomor terbaru
+    const currentData = localStorage.getItem('savedInvoiceForm');
+    if (currentData) {
+        try {
+            const d = JSON.parse(currentData);
+            d.invNumber = invNumber;
+            localStorage.setItem('savedInvoiceForm', JSON.stringify(d));
+        } catch(e) {}
+    }
+}
+
+// ======================= RESET COUNTER PADA MIDNIGHT =======================
+function checkDateChange() {
+    const today = getTodayKey();
+    const lastDate = localStorage.getItem('lastDate');
+    const counterData = localStorage.getItem('invCounterData');
+    const counters = counterData ? JSON.parse(counterData) : {};
+    
+    if (lastDate && lastDate !== today) {
+        // Hari berganti - reset counter
+        if (!counters[today]) {
+            counters[today] = 0;
+            localStorage.setItem('invCounterData', JSON.stringify(counters));
         }
+        localStorage.setItem('lastDate', today);
         
-        // Simpan kembali
-        localStorage.setItem('invCounterData', JSON.stringify(counters));
-        
-        // Generate nomor invoice
-        return `INV-${key}-${String(counters[key]).padStart(3,'0')}`;
-    }
-    
-    // Fungsi untuk mendapatkan nomor invoice yang sudah ada (tanpa increment)
-    function getCurrentInvoiceNumber() {
-        const key = getTodayKey();
-        const counterData = localStorage.getItem('invCounterData');
-        const counters = counterData ? JSON.parse(counterData) : {};
-        const currentCount = counters[key] || 0;
-        if (currentCount === 0) {
-            // Belum ada invoice hari ini, buat baru
-            return getNextInvoiceNumber();
-        }
-        return `INV-${key}-${String(currentCount).padStart(3,'0')}`;
-    }
-    
-    function updateInvoiceNumberField() { 
+        // Reset invNumber di localStorage agar dibuat baru
         const saved = localStorage.getItem('savedInvoiceForm');
-        let existing = null;
         if (saved) {
             try {
                 const d = JSON.parse(saved);
-                // Cek apakah nomor invoice masih valid untuk hari ini
-                if (d.invNumber && d.invNumber.includes(getTodayKey())) {
-                    existing = d.invNumber;
-                }
+                d.invNumber = '';
+                localStorage.setItem('savedInvoiceForm', JSON.stringify(d));
             } catch(e) {}
         }
-        // Jika ada existing invoice hari ini, pakai itu. Jika tidak, buat baru.
-        document.getElementById('invNumber').value = existing || getNextInvoiceNumber(); 
+        updateInvoiceNumberField();
+        console.log(`📅 Hari berganti ke ${today}, nomor invoice direset.`);
+    } else if (!lastDate) {
+        localStorage.setItem('lastDate', today);
     }
-
+}
     // ======================= REFUND HANDLERS =======================
     document.getElementById('enableRefundPolicy').addEventListener('change', function(e){
         document.getElementById('refundSettings').style.display = e.target.checked ? 'block' : 'none';
@@ -393,61 +419,71 @@
         localStorage.setItem('savedInvoiceForm',JSON.stringify(data));
     }
     
-    function loadAllInputData(){
-        const saved=localStorage.getItem('savedInvoiceForm');
-        if(saved){
-            const d=JSON.parse(saved);
-            document.getElementById('sellerName').value=d.sellerName||'Dede Sumarna';
-            document.getElementById('sellerAddress').value=d.sellerAddress||'SODONG, RT. 008 RW. 003, BATUMALANG CIMERAK';
-            document.getElementById('sellerNPWP').value=d.sellerNPWP||'21.078.030.0-442.000';
-            document.getElementById('sellerWA').value=d.sellerWA||'082320410740';
-            document.getElementById('sellerWeb').value=d.sellerWeb||'dedesumarna.com';
-            document.getElementById('sellerBank').value=d.sellerBank||'BCA';
-            document.getElementById('sellerAccount').value=d.sellerAccount||'2030900301';
-            document.getElementById('sellerAccountName').value=d.sellerAccountName||'Dede Sumarna';
-            document.getElementById('customerName').value=d.customerName||'';
-            document.getElementById('customerAddress').value=d.customerAddress||'';
-            document.getElementById('customerNPWP').value=d.customerNPWP||'';
-            document.getElementById('domain').value=d.domain||'';
-            document.getElementById('waNumber').value=d.waNumber||'';
-            document.getElementById('invNumber').value=d.invNumber||'';
-            document.getElementById('taxSerialNumber').value=d.taxSerialNumber||'Dalam Proses';
-            document.getElementById('invDate').value=d.invDate||'';
-            document.getElementById('dueDate').value=d.dueDate||'';
-            if(d.items && d.items.length) itemRows=d.items;
-            else itemRows=[{name:'Contoh Product',qty:1,price:100000,discount:0,taxRate:11,includeInTax:true}];
-            renderItemsTable();
-            document.getElementById('payDate1').value=d.payDate1||'';
-            document.getElementById('payMethod1').value=d.payMethod1||'QRIS';
-            document.getElementById('payAmount1').value=d.payAmount1||0;
-            document.getElementById('payDate2').value=d.payDate2||'';
-            document.getElementById('payMethod2').value=d.payMethod2||'Transfer Bank';
-            document.getElementById('payAmount2').value=d.payAmount2||0;
-            document.getElementById('enableTaxInvoice').checked=d.enableTaxInvoice||false;
-            document.getElementById('enableRefundPolicy').checked=d.enableRefundPolicy||false;
-            document.getElementById('refundPolicyType').value=d.refundPolicyType||'deduction';
-            document.getElementById('operationalFee').value=d.operationalFee||15;
-            document.getElementById('hourlyRate').value=d.hourlyRate||50000;
-            document.getElementById('hoursUsed').value=d.hoursUsed||0;
-            document.getElementById('pphRate').value=d.pphRate||2;
-            document.getElementById('pphNominal').value=d.pphNominal||0;
-            document.getElementById('manualPpnValue').value=d.manualPpnValue||0;
-            if(d.ppnMode==='manual' && manualRadio) manualRadio.checked=true;
-            else if(autoRadio) autoRadio.checked=true;
-            togglePpnMode();
-            if(d.enableTaxInvoice) document.getElementById('taxSettings').style.display='block';
-            if(d.enableRefundPolicy) document.getElementById('refundSettings').style.display='block';
-        } else {
-            const today=new Date().toISOString().slice(0,10);
-            document.getElementById('invDate').value=today;
-            let due=new Date(); due.setDate(due.getDate()+7);
-            document.getElementById('dueDate').value=due.toISOString().slice(0,10);
-            itemRows=[{name:'Contoh Product',qty:1,price:100000,discount:0,taxRate:11,includeInTax:true}];
-            renderItemsTable();
-        }
-        checkTaxConsistency();
+   function loadAllInputData(){
+    const saved = localStorage.getItem('savedInvoiceForm');
+    if (saved) {
+        const d = JSON.parse(saved);
+        document.getElementById('sellerName').value = d.sellerName || 'Dede Sumarna';
+        document.getElementById('sellerAddress').value = d.sellerAddress || 'SODONG, RT. 008 RW. 003, BATUMALANG CIMERAK';
+        document.getElementById('sellerNPWP').value = d.sellerNPWP || '21.078.030.0-442.000';
+        document.getElementById('sellerWA').value = d.sellerWA || '082320410740';
+        document.getElementById('sellerWeb').value = d.sellerWeb || 'dedesumarna.com';
+        document.getElementById('sellerBank').value = d.sellerBank || 'BCA';
+        document.getElementById('sellerAccount').value = d.sellerAccount || '2030900301';
+        document.getElementById('sellerAccountName').value = d.sellerAccountName || 'Dede Sumarna';
+        document.getElementById('customerName').value = d.customerName || '';
+        document.getElementById('customerAddress').value = d.customerAddress || '';
+        document.getElementById('customerNPWP').value = d.customerNPWP || '';
+        document.getElementById('domain').value = d.domain || '';
+        document.getElementById('waNumber').value = d.waNumber || '';
+        
+        // === PERBAIKAN: JANGAN PAKAI d.invNumber ===
+        // HAPUS baris ini: document.getElementById('invNumber').value = d.invNumber || '';
+        // Biarkan updateInvoiceNumberField() yang mengatur di akhir
+        
+        document.getElementById('taxSerialNumber').value = d.taxSerialNumber || 'Dalam Proses';
+        document.getElementById('invDate').value = d.invDate || '';
+        document.getElementById('dueDate').value = d.dueDate || '';
+        
+        if (d.items && d.items.length) itemRows = d.items;
+        else itemRows = [{ name: 'Contoh Product', qty: 1, price: 100000, discount: 0, taxRate: 11, includeInTax: true }];
+        renderItemsTable();
+        
+        document.getElementById('payDate1').value = d.payDate1 || '';
+        document.getElementById('payMethod1').value = d.payMethod1 || 'QRIS';
+        document.getElementById('payAmount1').value = d.payAmount1 || 0;
+        document.getElementById('payDate2').value = d.payDate2 || '';
+        document.getElementById('payMethod2').value = d.payMethod2 || 'Transfer Bank';
+        document.getElementById('payAmount2').value = d.payAmount2 || 0;
+        document.getElementById('enableTaxInvoice').checked = d.enableTaxInvoice || false;
+        document.getElementById('enableRefundPolicy').checked = d.enableRefundPolicy || false;
+        document.getElementById('refundPolicyType').value = d.refundPolicyType || 'deduction';
+        document.getElementById('operationalFee').value = d.operationalFee || 15;
+        document.getElementById('hourlyRate').value = d.hourlyRate || 50000;
+        document.getElementById('hoursUsed').value = d.hoursUsed || 0;
+        document.getElementById('pphRate').value = d.pphRate || 2;
+        document.getElementById('pphNominal').value = d.pphNominal || 0;
+        document.getElementById('manualPpnValue').value = d.manualPpnValue || 0;
+        
+        if (d.ppnMode === 'manual' && manualRadio) manualRadio.checked = true;
+        else if (autoRadio) autoRadio.checked = true;
+        togglePpnMode();
+        if (d.enableTaxInvoice) document.getElementById('taxSettings').style.display = 'block';
+        if (d.enableRefundPolicy) document.getElementById('refundSettings').style.display = 'block';
+    } else {
+        const today = new Date().toISOString().slice(0, 10);
+        document.getElementById('invDate').value = today;
+        let due = new Date();
+        due.setDate(due.getDate() + 7);
+        document.getElementById('dueDate').value = due.toISOString().slice(0, 10);
+        itemRows = [{ name: 'Contoh Product', qty: 1, price: 100000, discount: 0, taxRate: 11, includeInTax: true }];
+        renderItemsTable();
     }
-
+    checkTaxConsistency();
+    
+    // === PERBAIKAN: Update nomor invoice agar selalu terbaru ===
+    updateInvoiceNumberField();
+}
     function generateInvoice(){
         const seller={ name:document.getElementById('sellerName').value, address:document.getElementById('sellerAddress').value, wa:document.getElementById('sellerWA').value, web:document.getElementById('sellerWeb').value, bank:document.getElementById('sellerBank').value, account:document.getElementById('sellerAccount').value, an:document.getElementById('sellerAccountName').value };
         const customer={ name:document.getElementById('customerName').value||'-', address:document.getElementById('customerAddress').value||'-', npwp:document.getElementById('customerNPWP').value||'-', domain:document.getElementById('domain').value, wa:document.getElementById('waNumber').value };
@@ -565,31 +601,53 @@
     document.getElementById('saveImageBtn').addEventListener('click', saveAsImage);
     document.getElementById('pphRate').addEventListener('change', checkTaxConsistency);
 
-    // ======================= RESET COUNTER PADA MIDNIGHT =======================
-    // Fungsi untuk reset counter otomatis saat hari berganti
+     // ======================= RESET COUNTER PADA MIDNIGHT =======================
     function checkDateChange() {
         const today = getTodayKey();
         const lastDate = localStorage.getItem('lastDate');
+        const counterData = localStorage.getItem('invCounterData');
+        const counters = counterData ? JSON.parse(counterData) : {};
+        
         if (lastDate && lastDate !== today) {
-            // Hari berganti, reset counter dengan membuat entri baru
-            const counterData = localStorage.getItem('invCounterData');
-            const counters = counterData ? JSON.parse(counterData) : {};
+            // Hari berganti - reset counter
             if (!counters[today]) {
-                counters[today] = 0; // Reset ke 0, nanti akan increment ke 1
+                counters[today] = 0;
                 localStorage.setItem('invCounterData', JSON.stringify(counters));
             }
             localStorage.setItem('lastDate', today);
+            
+            // Reset invNumber di localStorage agar dibuat baru
+            const saved = localStorage.getItem('savedInvoiceForm');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    d.invNumber = '';
+                    localStorage.setItem('savedInvoiceForm', JSON.stringify(d));
+                } catch(e) {}
+            }
+            updateInvoiceNumberField();
+            console.log(`📅 Hari berganti ke ${today}, nomor invoice direset.`);
         } else if (!lastDate) {
             localStorage.setItem('lastDate', today);
         }
     }
 
-    // Jalankan pengecekan setiap 10 detik
+    // ===== AUTO REFRESH NOMOR INVOICE SETIAP 30 DETIK =====
+    setInterval(function() {
+        const today = getTodayKey();
+        const currentInv = document.getElementById('invNumber').value;
+        
+        if (currentInv && !currentInv.includes(today)) {
+            updateInvoiceNumberField();
+            console.log('🔄 Nomor invoice diupdate otomatis');
+        }
+    }, 30000);
+
+    // ===== JALANKAN PENGECEKAN SETIAP 10 DETIK =====
     setInterval(checkDateChange, 10000);
 
-    // Inisialisasi
+    // ===== INISIALISASI =====
     checkDateChange();
-    updateInvoiceNumberField();
     loadAllInputData();
 </script>
 </body>
